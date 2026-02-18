@@ -23,14 +23,13 @@
         <div id="menu-area" class="grid-menu"></div>
         <div id="shuffle-overlay" style="display: none;">
             <div class="shuffle-content">
-                <div id="dynamic-shuffle-icon" class="shuffle-icon">⏳</div>
+                <div id="dynamic-shuffle-icon" class="shuffle-icon">⳽</div>
                 <p>Sorular Hazırlanıyor...</p>
                 <div class="progress-bar"><div class="progress-fill"></div></div>
             </div>
         </div>
         <div id="game-area" style="display: none;">
             <div id="map"></div>
-            
             <div id="status-bar">
                 <span>Doğru: <b id="score-correct">0</b></span>
                 <span>Yanlış: <b id="score-wrong">0</b></span>
@@ -40,10 +39,20 @@
 
     <div id="modal-overlay"></div>
     <div id="question-modal">
-        <div id="topic-label"></div> <h3 id="q-title">Soru</h3>
+        <!-- Sol üst: Konu adı -->
+        <div id="topic-label"></div>
+        <!-- Sağ üst: İlerleme sayacı (sadece tarih) -->
+        <div id="quiz-progress" style="display:none;"></div>
+
+        <h3 id="q-title">Soru</h3>
         <input type="text" id="user-answer" placeholder="Cevabı yazın..." autocomplete="off">
+
+        <!-- Önceki soru butonu (sadece tarih) -->
+        <button id="btn-prev-question" style="display:none;" class="btn-prev">◀ Önceki Soru</button>
+
         <button class="btn-check" onclick="checkAnswer()">KONTROL ET</button>
         <button class="btn-giveup" onclick="showAnswer()">CEVABI GÖSTER</button>
+        <button id="btn-finish" onclick="finishQuiz()" class="btn-finish" style="display:none;">✓ Bitir</button>
         <button class="btn-close" onclick="closeModal()">İPTAL</button>
         <p id="feedback"></p>
     </div>
