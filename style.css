@@ -18,15 +18,18 @@ h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
 
 /* --- Butonlar --- */
 #back-btn { display: none; background-color: #e74c3c; color: white; padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 15px; font-weight: bold; }
-.btn-check, .btn-close, .btn-giveup { width: 100%; padding: 10px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-bottom: 5px; color: white; }
-.btn-check { background: #3498db; }
-.btn-close { background: #95a5a6; }
+.btn-check, .btn-close, .btn-giveup, .btn-prev, .btn-finish { width: 100%; padding: 10px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-bottom: 5px; color: white; }
+.btn-check  { background: #3498db; }
+.btn-close  { background: #95a5a6; }
 .btn-giveup { background: #f39c12; }
+.btn-prev   { background: #8e44ad; }
+.btn-finish { background: #27ae60; }
+.btn-finish:hover { background: #2ecc71; }
 
 /* --- LEAFLET HARİTA KUTUSU --- */
 #map {
     width: 100%;
-    height: 550px; /* Harita yüksekliği */
+    height: 550px;
     border-radius: 12px;
     box-shadow: 0 4px 15px rgba(0,0,0,0.2);
     z-index: 1;
@@ -40,8 +43,45 @@ h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
 
 /* Modal Ayarları */
 #modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 999; backdrop-filter: blur(2px); }
-#question-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 25px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); z-index: 1000; width: 90%; max-width: 350px; text-align: center; }
+#question-modal {
+    display: none; position: fixed; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: white; padding: 25px; padding-top: 45px;
+    border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    z-index: 1000; width: 90%; max-width: 370px; text-align: center;
+}
 input[type="text"] { width: 100%; padding: 12px; margin: 15px 0; border: 2px solid #dfe6e9; border-radius: 8px; font-size: 16px; outline: none; text-align: center; }
+
+/* Sol üst: Konu etiketi */
+#topic-label {
+    position: absolute;
+    top: 10px;
+    left: 12px;
+    font-size: 0.65rem;
+    color: #95a5a6;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    pointer-events: none;
+    max-width: 55%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Sağ üst: İlerleme sayacı */
+#quiz-progress {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    font-size: 0.75rem;
+    color: #2c3e50;
+    font-weight: 700;
+    background: #ecf0f1;
+    border-radius: 20px;
+    padding: 2px 10px;
+    pointer-events: none;
+}
 
 /* Mobilde harita ayarı */
 @media screen and (max-width: 768px) {
@@ -50,7 +90,7 @@ input[type="text"] { width: 100%; padding: 12px; margin: 15px 0; border: 2px sol
 }
 
 /* ============================================================
-   PREMIUM 3D PIN TASARIMI (CSS)
+   PREMIUM 3D PIN TASARIMI
    ============================================================ */
 .premium-pin {
     display: flex; align-items: center; justify-content: center; position: relative;
@@ -58,38 +98,37 @@ input[type="text"] { width: 100%; padding: 12px; margin: 15px 0; border: 2px sol
 }
 .pin-body {
     width: 36px; height: 36px;
-    background: linear-gradient(135deg, #ff6b6b 0%, #ee5253 100%); /* Kırmızı Gradyan */
-    border: 3px solid #ffffff; border-radius: 50% 50% 50% 0; /* Damla şekli */
-    transform: rotate(-45deg); /* Şekli dikelt */
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5253 100%);
+    border: 3px solid #ffffff; border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
     box-shadow: 0 5px 15px rgba(238, 82, 83, 0.4), 0 3px 6px rgba(0,0,0,0.1);
     display: flex; align-items: center; justify-content: center;
     transition: background 0.3s, transform 0.3s;
 }
 .pin-number {
     font-family: 'Segoe UI', sans-serif; font-weight: 800; font-size: 14px; color: white;
-    transform: rotate(45deg); /* Yazıyı düzelt */
+    transform: rotate(45deg);
     text-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
-/* Hover Efekti */
 .premium-pin:hover { z-index: 999 !important; transform: translateY(-8px) scale(1.1); }
 .premium-pin:hover .pin-body {
     background: linear-gradient(135deg, #ff4757 0%, #ff6b81 100%);
     box-shadow: 0 10px 20px rgba(255, 71, 87, 0.5);
 }
-/* DOĞRU CEVAP (Yeşil) */
 .premium-pin.correct .pin-body {
     background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
     box-shadow: 0 5px 15px rgba(46, 204, 113, 0.4);
 }
-/* YANLIŞ/PASİF (Turuncu) */
 .premium-pin.passive .pin-body {
     background: linear-gradient(135deg, #f39c12 0%, #d35400 100%);
     box-shadow: none; opacity: 0.9;
 }
+
+/* Konu seçim ekranı */
 .selection-container { padding: 20px; text-align: center; width: 100%; }
-.topic-grid { 
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
-    gap: 15px; margin-bottom: 30px; 
+.topic-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px; margin-bottom: 30px;
 }
 .topic-item input { display: none; }
 .topic-box {
@@ -109,86 +148,39 @@ input[type="text"] { width: 100%; padding: 12px; margin: 15px 0; border: 2px sol
 }
 .btn-start-mixed:hover { background: #2ecc71; transform: scale(1.05); }
 
-/* Soru Modalının içindeki Konu Etiketi */
-#topic-label {
-    position: absolute;
-    top: 8px;
-    left: 12px;
-    font-size: 0.7rem;
-    color: #95a5a6;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    pointer-events: none;
-}
-
-/* Modalın pozisyonunu sabitlemek için parent'ına (question-modal) position relative ekle */
-#question-modal {
-    position: fixed;
-    /* Mevcut diğer kodların... */
-    padding-top: 35px; /* Etikete yer açmak için */
-}
-/* --- Karıştırma Efekti (Shuffle Overlay) --- */
+/* --- Karıştırma Efekti --- */
 #shuffle-overlay {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(44, 62, 80, 0.95); /* Koyu şık bir arka plan */
+    background: rgba(44, 62, 80, 0.95);
     z-index: 2000; display: flex; align-items: center; justify-content: center;
     color: white; text-align: center;
 }
-.shuffle-content {
-    /* animation: dice-spin 0.6s infinite linear;  <-- BU SATIRI SİL */
-    font-size: 4rem; 
-    display: block; 
-    margin-bottom: 20px;
-    text-align: center;
-}
+.shuffle-content { font-size: 4rem; display: block; margin-bottom: 20px; text-align: center; }
 .shuffle-icon {
-    font-size: 5rem;
-    height: 100px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    font-size: 5rem; height: 100px;
+    display: flex; align-items: center; justify-content: center;
     margin-bottom: 20px;
-    /* Sadece büyüme-küçülme ve hafif bulanıklık efekti */
     animation: shuffle-pulse 0.15s infinite alternate;
 }
-
 @keyframes shuffle-pulse {
-    from {
-        transform: scale(1);
-        filter: blur(0px);
-    }
-    to {
-        transform: scale(1.15);
-        filter: blur(1px); /* Hız hissi verir ama döndürmez */
-    }
+    from { transform: scale(1); filter: blur(0px); }
+    to   { transform: scale(1.15); filter: blur(1px); }
 }
 .shuffle-content p { font-size: 1.2rem; font-weight: bold; margin-bottom: 15px; letter-spacing: 1px; }
 
 .progress-bar { width: 200px; height: 6px; background: rgba(255,255,255,0.2); border-radius: 10px; overflow: hidden; margin: 0 auto; }
-.progress-fill { 
-    width: 0%; height: 100%; background: #27ae60; 
-    animation: progress-load 1.5s ease-in-out forwards; 
+.progress-fill {
+    width: 0%; height: 100%; background: #27ae60;
+    animation: progress-load 1.5s ease-in-out forwards;
 }
-
-.progress-fill { 
-    width: 0%; height: 100%; background: #27ae60; 
-    animation: progress-load 1.5s ease-in-out forwards; 
-}
-
 @keyframes progress-load {
-    0% { width: 0%; }
+    0%   { width: 0%; }
     100% { width: 100%; }
 }
 
-@keyframes dice-spin {
-    0% { transform: rotate(0deg) scale(1); }
-    50% { transform: rotate(180deg) scale(1.2); }
-    100% { transform: rotate(360deg) scale(1); }
+@keyframes apply-shake {
+    0%, 100% { transform: translate(-50%, -50%); }
+    20%, 60%  { transform: translate(calc(-50% - 8px), -50%); }
+    40%, 80%  { transform: translate(calc(-50% + 8px), -50%); }
 }
-
-@keyframes icon-pulse {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.1); }
-    100% { transform: scale(1); }
-}
+.apply-shake { animation: apply-shake 0.5s ease; }
