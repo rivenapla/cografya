@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KPSS Coğrafya - Dijital Harita</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+</head>
+<body>
+
+    <header>
+        <h1>KPSS</h1>
+        <p>Coğrafya-Tarih</p>
+    </header>
+
+    <div class="container">
+        <button id="back-btn" onclick="goBack()">← Ana Menüye Dön</button>
+        <h2 id="current-title">Ana Menü</h2>
+
+        <div id="menu-area" class="grid-menu"></div>
+        <div id="shuffle-overlay" style="display: none;">
+            <div class="shuffle-content">
+                <div id="dynamic-shuffle-icon" class="shuffle-icon">⏳</div>
+                <p>Sorular Hazırlanıyor...</p>
+                <div class="progress-bar"><div class="progress-fill"></div></div>
+            </div>
+        </div>
+        <div id="game-area" style="display: none;">
+            <div id="map"></div>
+            
+            <div id="status-bar">
+                <span>Doğru: <b id="score-correct">0</b></span>
+                <span>Yanlış: <b id="score-wrong">0</b></span>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-overlay"></div>
+    <div id="question-modal">
+        <div id="topic-label"></div> <h3 id="q-title">Soru</h3>
+        <input type="text" id="user-answer" placeholder="Cevabı yazın..." autocomplete="off">
+        <button class="btn-check" onclick="checkAnswer()">KONTROL ET</button>
+        <button class="btn-giveup" onclick="showAnswer()">CEVABI GÖSTER</button>
+        <button class="btn-close" onclick="closeModal()">İPTAL</button>
+        <p id="feedback"></p>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="data.js"></script>
+    <script src="script.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+</body>
+</html>
