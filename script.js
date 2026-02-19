@@ -5,6 +5,7 @@
 let map = null;
 let currentMarkers = [];
 let currentMountain = null;
+let currentGameId = null;
 let score = { correct: 0, wrong: 0, shown: 0 };
 
 // Mevcut soru için kaç kez yanlış girildiğini takip eder
@@ -251,13 +252,86 @@ function startGame(gameId, title, parentId) {
     };
 
     const startZoom = window.innerWidth < 768 ? 5 : 6;
-    map = L.map('map').setView([39.0, 35.0], startZoom);
+    map = L.map('map', { zoomControl: true }).setView([39.0, 35.0], startZoom);
 
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        attribution: 'Tiles &copy; Esri'
-    }).addTo(map);
+    // --- 3 harita katmanı ---
+    const tileLayers = {
+        satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri', maxZoom: 19
+        }),
+        topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenTopoMap', subdomains: 'abc', maxZoom: 17
+        }),
+        light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; CARTO', subdomains: 'abcd', maxZoom: 19
+        })
+    };
 
+    let activeLayer = tileLayers.satellite;
+    activeLayer.addTo(map);
+
+    // --- Katman seçici butonları ---
+    const switcherHTML = `
+        <div id="map-switcher">
+            <button class="map-btn active" data-layer="satellite" title="Uydu">🛰️</button>
+            <button class="map-btn" data-layer="topo" title="Fiziki">🗺️</button>
+            <button class="map-btn" data-layer="light" title="Sade">🗾</button>
+        </div>
+    `;
+    map.getContainer().insertAdjacentHTML('beforeend', switcherHTML);
+
+    document.querySelectorAll('.map-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const key = btn.dataset.layer;
+            if (activeLayer === tileLayers[key]) return;
+            map.removeLayer(activeLayer);
+            tileLayers[key].addTo(map);
+            activeLayer = tileLayers[key];
+            document.querySelectorAll('.map-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        });
+    });
+
+    currentGameId = gameId;
     placePins(gameId);
+}
+
+// --- SPİDERFY DURUM ---
+let spiderfyState = {
+    activeGroupId: null,
+    virtualMarkers: [],
+};
+
+// Koordinat bazlı çakışma eşiği (~8km)
+const SPIDERFY_THRESHOLD = 0.08;
+// Yelpaze yarıçapı (px)
+const SPIDER_RADIUS = 55;
+
+function getPinStyle(item) {
+    let pinColor = '#3498db';
+    let pinIcon = '';
+    let pinClass = 'pin-body';
+    if (item.type === 'cikarim') {
+        pinColor = '#7f8c8d';
+        pinIcon = '⛏️';
+    } else if (item.type === 'isleme') {
+        pinColor = '#e74c3c';
+        pinIcon = '🏭';
+        pinClass = 'pin-body factory-pin';
+    }
+    return { pinColor, pinIcon, pinClass };
+}
+
+function buildPinHTML(item, idPrefix) {
+    const { pinColor, pinIcon, pinClass } = getPinStyle(item);
+    return `
+        <div class="premium-pin" id="${idPrefix}${item.id}">
+            <div class="${pinClass}" style="background-color:${pinColor};">
+                <span class="pin-number" style="font-size:14px;">${item.label === 'F' ? pinIcon : item.label}</span>
+            </div>
+        </div>
+    `;
 }
 
 function placePins(gameId) {
@@ -265,44 +339,340 @@ function placePins(gameId) {
     currentMarkers = [];
     if (!pinsData) return;
 
-    pinsData.forEach(item => {
-        let pinColor = '#3498db';
-        let pinIcon = '';
-        let pinClass = 'pin-body';
+    // Bu gameId spiderfy kullanıyor mu?
+    // cikarim/isleme type'ı varsa evet
+    const useSpiderfy = pinsData.some(p => p.type === 'cikarim' || p.type === 'isleme');
 
-        if (item.type === 'cikarim') {
-            pinColor = '#7f8c8d';
-            pinIcon = '⛏️';
-        } else if (item.type === 'isleme') {
-            pinColor = '#e74c3c';
-            pinIcon = '🏭';
-            pinClass = 'pin-body factory-pin';
+    if (!useSpiderfy) {
+        // Yer şekilleri gibi — eski sade davranış
+        pinsData.forEach(item => {
+            const { pinColor, pinIcon, pinClass } = getPinStyle(item);
+            const icon = L.divIcon({
+                className: 'custom-leaflet-icon',
+                html: buildPinHTML(item, 'marker-'),
+                iconSize: [40, 40], iconAnchor: [20, 42], popupAnchor: [0, -40]
+            });
+            const marker = L.marker([item.lat, item.lng], { icon }).addTo(map);
+            marker.on('click', () => {
+                const el = document.getElementById(`marker-${item.id}`);
+                if (el && el.classList.contains('correct')) return;
+                openQuestion(item, marker);
+            });
+            currentMarkers.push({ leafletMarker: marker, dataId: item.id });
+        });
+        return;
+    }
+
+    // --- Spiderfy: koordinat bazlı gruplama ---
+    const used = new Set();
+    const groups = [];
+
+    pinsData.forEach((itemA, i) => {
+        if (used.has(i)) return;
+        const group = [itemA];
+        used.add(i);
+        pinsData.forEach((itemB, j) => {
+            if (used.has(j)) return;
+            if (Math.abs(itemA.lat - itemB.lat) < SPIDERFY_THRESHOLD &&
+                Math.abs(itemA.lng - itemB.lng) < SPIDERFY_THRESHOLD) {
+                group.push(itemB);
+                used.add(j);
+            }
+        });
+        groups.push(group);
+    });
+
+    // Her grup için proxy marker bas
+    groups.forEach((group, gIdx) => {
+        const groupId = `g${gIdx}`;
+        const anchor = group[0]; // grubun merkezi ilk pin
+
+        if (group.length === 1) {
+            // Tek pin — normal
+            const icon = L.divIcon({
+                className: 'custom-leaflet-icon',
+                html: buildPinHTML(anchor, 'marker-'),
+                iconSize: [40, 40], iconAnchor: [20, 42], popupAnchor: [0, -40]
+            });
+            const marker = L.marker([anchor.lat, anchor.lng], { icon }).addTo(map);
+            marker.on('click', () => {
+                const el = document.getElementById(`marker-${anchor.id}`);
+                if (el && el.classList.contains('correct')) return;
+                openQuestion(anchor, marker);
+            });
+            currentMarkers.push({ leafletMarker: marker, dataId: anchor.id });
+
+        } else {
+            // Birden fazla pin — cluster ikonu
+            const allCorrect = group.every(item => {
+                const el = document.getElementById(`marker-${item.id}`);
+                return el && el.classList.contains('correct');
+            });
+
+            const clusterIcon = L.divIcon({
+                className: 'custom-leaflet-icon',
+                html: `
+                    <div class="spider-cluster" id="cluster-${groupId}">
+                        <span class="cluster-count">${group.length}</span>
+                    </div>
+                `,
+                iconSize: [42, 42], iconAnchor: [21, 21]
+            });
+
+            const clusterMarker = L.marker([anchor.lat, anchor.lng], { icon: clusterIcon }).addTo(map);
+
+            clusterMarker.on('click', (e) => {
+                L.DomEvent.stopPropagation(e);
+                if (spiderfyState.activeGroupId === groupId) {
+                    collapseSpiderfy();
+                } else {
+                    collapseSpiderfy();
+                    expandSpiderfy(group, groupId, anchor, clusterMarker);
+                }
+            });
+
+            // currentMarkers'a tüm grup üyelerini ekle (skor takibi için)
+            group.forEach(item => {
+                currentMarkers.push({ leafletMarker: clusterMarker, dataId: item.id });
+            });
         }
+    });
 
-        const premiumIcon = L.divIcon({
-            className: 'custom-leaflet-icon',
+    // Haritaya tıklayınca spiderfy'ı kapat
+    map.on('click', () => collapseSpiderfy());
+}
+
+function expandSpiderfy(group, groupId, anchor, clusterMarker) {
+    spiderfyState.activeGroupId = groupId;
+    spiderfyState.virtualMarkers = [];
+
+    const centerLatLng = L.latLng(anchor.lat, anchor.lng);
+    const centerPx = map.latLngToContainerPoint(centerLatLng);
+    const count = group.length;
+
+    // Yelpaze açısı: 100° yay, yukarı ortalanmış
+    const FAN_DEG = 100;
+    const fanRad = (FAN_DEG * Math.PI) / 180;
+    const startAngle = -Math.PI / 2 - fanRad / 2; // Yukarı merkezli
+    const angleStep = count > 1 ? fanRad / (count - 1) : 0;
+
+    // Cluster ikonunu soluklaştır
+    const clusterEl = document.getElementById(`cluster-${groupId}`);
+    if (clusterEl) clusterEl.style.opacity = '0.35';
+
+    group.forEach((item, i) => {
+        const angle = count > 1 ? startAngle + angleStep * i : -Math.PI / 2;
+        const targetPx = {
+            x: centerPx.x + Math.cos(angle) * SPIDER_RADIUS,
+            y: centerPx.y + Math.sin(angle) * SPIDER_RADIUS,
+        };
+        const targetLatLng = map.containerPointToLatLng([targetPx.x, targetPx.y]);
+
+        // Leaflet polyline — zoom'da haritayla birlikte hareket eder
+        const line = L.polyline([centerLatLng, targetLatLng], {
+            color: 'rgba(255,255,255,0.75)',
+            weight: 1.5,
+            dashArray: '5 4',
+            interactive: false,
+        }).addTo(map);
+
+        const alreadyCorrect = (() => {
+            const el = document.getElementById(`marker-${item.id}`);
+            return el && el.classList.contains('correct');
+        })();
+
+        const { pinColor, pinIcon, pinClass } = getPinStyle(item);
+        const spiderIcon = L.divIcon({
+            className: 'custom-leaflet-icon spider-icon',
             html: `
-                <div class="premium-pin" id="marker-${item.id}">
-                    <div class="${pinClass}" style="background-color: ${pinColor};">
-                        <span class="pin-number" style="font-size: 14px;">${item.label === 'F' ? pinIcon : item.label}</span>
+                <div class="premium-pin spider-pin ${alreadyCorrect ? 'correct' : ''}"
+                     id="spider-${item.id}"
+                     style="opacity:0; transform:scale(0.3);">
+                    <div class="${pinClass}" style="background-color:${pinColor};">
+                        <span class="pin-number" style="font-size:14px;">
+                            ${item.label === 'F' ? pinIcon : item.label}
+                        </span>
                     </div>
                 </div>
             `,
-            iconSize: [40, 40],
-            iconAnchor: [20, 42],
-            popupAnchor: [0, -40]
+            iconSize: [40, 40], iconAnchor: [20, 42],
         });
 
-        const marker = L.marker([item.lat, item.lng], { icon: premiumIcon }).addTo(map);
+        const spiderMarker = L.marker(targetLatLng, { icon: spiderIcon, zIndexOffset: 1000 }).addTo(map);
 
-        marker.on('click', () => {
-            const element = document.getElementById(`marker-${item.id}`);
-            if (element && element.classList.contains('correct')) return;
-            openQuestion(item, marker);
+        spiderMarker.on('click', (e) => {
+            L.DomEvent.stopPropagation(e);
+            if (alreadyCorrect) return;
+            openQuestion(item, spiderMarker);
         });
 
-        currentMarkers.push({ leafletMarker: marker, dataId: item.id });
+        spiderfyState.virtualMarkers.push({ marker: spiderMarker, line, item });
+
+        // Gecikimli giriş animasyonu
+        setTimeout(() => {
+            const el = document.getElementById(`spider-${item.id}`);
+            if (el) {
+                el.style.transition = 'opacity 0.2s ease, transform 0.3s cubic-bezier(0.34,1.56,0.64,1)';
+                el.style.opacity = '1';
+                el.style.transform = 'scale(1)';
+            }
+        }, i * 60);
     });
+}
+
+function collapseSpiderfy() {
+    if (!spiderfyState.activeGroupId) return;
+
+    spiderfyState.virtualMarkers.forEach(({ marker, line, item }) => {
+        const el = document.getElementById(`spider-${item.id}`);
+        if (el) {
+            el.style.opacity = '0';
+            el.style.transform = 'scale(0.3)';
+        }
+        setTimeout(() => {
+            map.removeLayer(marker);
+            map.removeLayer(line);
+        }, 200);
+    });
+
+    const clusterEl = document.getElementById(`cluster-${spiderfyState.activeGroupId}`);
+    if (clusterEl) clusterEl.style.opacity = '1';
+
+    spiderfyState.activeGroupId = null;
+    spiderfyState.virtualMarkers = [];
+}
+
+// --- CLUSTER GÜNCELLEME (cevap sonrası) ---
+function updateClusterAfterAnswer(itemId) {
+    const gameId = currentGameId;
+    const pinsData = appData.gameData[gameId];
+    if (!pinsData) return;
+
+    const THRESHOLD = 0.08;
+    const used = new Set();
+    const groups = [];
+    let gIdx = 0;
+    pinsData.forEach((itemA, i) => {
+        if (used.has(i)) return;
+        const group = [itemA];
+        used.add(i);
+        pinsData.forEach((itemB, j) => {
+            if (used.has(j)) return;
+            if (Math.abs(itemA.lat - itemB.lat) < THRESHOLD &&
+                Math.abs(itemA.lng - itemB.lng) < THRESHOLD) {
+                group.push(itemB);
+                used.add(j);
+            }
+        });
+        if (group.length > 1) { groups.push({ group, gIdx }); gIdx++; }
+        else gIdx++;
+    });
+
+    // Tek pinlerin index'ini düzgün hesaplamak için:
+    // placePins ile aynı sırada gruplanıyor, groupId = g{toplam sıra no}
+    // Yeniden düzgün hesaplayalım
+    const used2 = new Set();
+    let gi = 0;
+    pinsData.forEach((itemA, i) => {
+        if (used2.has(i)) { return; }
+        const group = [{ item: itemA, idx: i }];
+        used2.add(i);
+        pinsData.forEach((itemB, j) => {
+            if (used2.has(j)) return;
+            if (Math.abs(itemA.lat - itemB.lat) < THRESHOLD &&
+                Math.abs(itemA.lng - itemB.lng) < THRESHOLD) {
+                group.push({ item: itemB, idx: j });
+                used2.add(j);
+            }
+        });
+        if (group.length > 1) {
+            const groupId = `g${gi}`;
+            const hasItem = group.some(g => g.item.id === itemId);
+            if (hasItem) {
+                const clusterEl = document.getElementById(`cluster-${groupId}`);
+                if (!clusterEl) { gi++; return; }
+
+                const remaining = group.filter(({ item: p }) => {
+                    const mEl = document.getElementById(`marker-${p.id}`);
+                    const sEl = document.getElementById(`spider-${p.id}`);
+                    const done = (mEl && (mEl.classList.contains('correct') || mEl.classList.contains('passive')))
+                              || (sEl && (sEl.classList.contains('correct') || sEl.classList.contains('passive')));
+                    return !done;
+                }).length;
+
+                const countEl = clusterEl.querySelector('.cluster-count');
+                if (remaining === 0) {
+                    clusterEl.style.background = 'radial-gradient(circle at 35% 35%, #2ecc71, #1e8449)';
+                    clusterEl.style.boxShadow = '0 4px 12px rgba(46,204,113,0.5)';
+                    if (countEl) countEl.innerText = '✓';
+                } else {
+                    if (countEl) countEl.innerText = remaining;
+                }
+            }
+        }
+        gi++;
+    });
+}
+
+// --- OYUN TAMAMLANDI MI? ---
+function checkGameCompletion() {
+    const gameId = currentGameId;
+    const pinsData = appData.gameData[gameId];
+    if (!pinsData) return;
+
+    const total = pinsData.length;
+    const done = pinsData.filter(p => {
+        const markerEl = document.getElementById(`marker-${p.id}`);
+        const spiderEl = document.getElementById(`spider-${p.id}`);
+        return (markerEl && (markerEl.classList.contains('correct') || markerEl.classList.contains('passive')))
+            || (spiderEl && (spiderEl.classList.contains('correct') || spiderEl.classList.contains('passive')));
+    }).length;
+
+    if (done >= total) {
+        setTimeout(() => showCompletionScreen(), 400);
+    }
+}
+
+function showCompletionScreen() {
+    const existing = document.getElementById('completion-overlay');
+    if (existing) existing.remove();
+
+    const total = score.correct + score.wrong + score.shown;
+    const pct = total > 0 ? Math.round((score.correct / total) * 100) : 0;
+
+    let emoji = '🏆';
+    let title = 'Mükemmel!';
+    let subtitle = 'Tüm noktaları doğru bildin!';
+    if (pct < 100 && pct >= 70) { emoji = '🎯'; title = 'Çok İyi!'; subtitle = `${pct}% başarı oranı.`; }
+    else if (pct < 70) { emoji = '📚'; title = 'Tekrar Çalış!'; subtitle = `${pct}% başarı oranı.`; }
+
+    const overlay = document.createElement('div');
+    overlay.id = 'completion-overlay';
+    overlay.innerHTML = `
+        <div class="completion-card">
+            <div class="completion-emoji">${emoji}</div>
+            <h2 class="completion-title">${title}</h2>
+            <p class="completion-sub">${subtitle}</p>
+            <div class="completion-stats">
+                <div class="cstat cstat-correct">
+                    <span class="cstat-num">${score.correct}</span>
+                    <span class="cstat-label">Doğru</span>
+                </div>
+                <div class="cstat cstat-wrong">
+                    <span class="cstat-num">${score.wrong}</span>
+                    <span class="cstat-label">Yanlış</span>
+                </div>
+                <div class="cstat cstat-shown">
+                    <span class="cstat-num">${score.shown}</span>
+                    <span class="cstat-label">Gösterildi</span>
+                </div>
+            </div>
+            <button class="completion-btn" onclick="document.getElementById('completion-overlay').remove()">
+                Haritaya Dön
+            </button>
+        </div>
+    `;
+    map.getContainer().appendChild(overlay);
 }
 
 // --- MODAL AÇMA ---
@@ -623,8 +993,11 @@ function checkAnswer() {
         feedback.style.color = "#27ae60";
         feedback.innerHTML = "<b>DOĞRU!</b>";
 
+        // Normal, spider ve cluster pinlerini güncelle
         const pinElement = document.getElementById(`marker-${currentMountain.id}`);
         if (pinElement) pinElement.classList.add('correct');
+        const spiderEl = document.getElementById(`spider-${currentMountain.id}`);
+        if (spiderEl) spiderEl.classList.add('correct');
 
         score.correct++;
         updateScore();
@@ -638,7 +1011,16 @@ function checkAnswer() {
             }
             setTimeout(() => { closeModal(); nextQuestion(); }, 1000);
         } else {
-            setTimeout(closeModal, 850);
+            // Coğrafya: desc varsa göster, sonra kapat
+            if (currentMountain.desc) {
+                feedback.innerHTML += `<br><span style="font-size:0.85rem; color:#27ae60; margin-top:4px; display:block;">${currentMountain.desc}</span>`;
+            }
+            updateClusterAfterAnswer(currentMountain.id);
+            const delay = currentMountain.desc ? 1800 : 850;
+            setTimeout(() => {
+                closeModal();
+                checkGameCompletion();
+            }, delay);
         }
     } else {
         wrongAttempts++;
@@ -700,6 +1082,8 @@ function showAnswer() {
 
     const pinElement = document.getElementById(`marker-${currentMountain.id}`);
     if (pinElement) pinElement.classList.add('passive');
+    const spiderEl = document.getElementById(`spider-${currentMountain.id}`);
+    if (spiderEl) spiderEl.classList.add('passive');
 
     score.shown++;
 
@@ -717,6 +1101,13 @@ function showAnswer() {
             quizHistory[existingIdx].status = 'shown';
         }
         setTimeout(() => { closeModal(); nextQuestion(); }, 2000);
+    } else {
+        // Coğrafya: cevabı göster → kapat → tamamlanma kontrolü
+        updateClusterAfterAnswer(currentMountain.id);
+        setTimeout(() => {
+            closeModal();
+            checkGameCompletion();
+        }, 2000);
     }
 }
 
