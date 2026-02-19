@@ -33,12 +33,18 @@
             <div id="status-bar">
                 <span>Doğru: <b id="score-correct">0</b></span>
                 <span>Yanlış: <b id="score-wrong">0</b></span>
+                <span>Boş: <b id="score-shown">0</b></span>
             </div>
         </div>
     </div>
 
     <div id="modal-overlay"></div>
     <div id="question-modal">
+        <!-- Üst ilerleme çubuğu -->
+        <div id="modal-progress-bar">
+            <div id="modal-progress-fill"></div>
+        </div>
+
         <!-- Sol üst: Konu adı -->
         <div id="topic-label"></div>
         <!-- Sağ üst: İlerleme sayacı (sadece tarih) -->
@@ -47,13 +53,26 @@
         <h3 id="q-title">Soru</h3>
         <input type="text" id="user-answer" placeholder="Cevabı yazın..." autocomplete="off">
 
-        <!-- Önceki soru butonu (sadece tarih) -->
-        <button id="btn-prev-question" style="display:none;" class="btn-prev">◀ Önceki Soru</button>
+        <!-- İpucu alanı (sadece tarih) -->
+        <div id="hint-area" style="display:none;">
+            <button id="btn-hint" onclick="useHint()">
+                <span class="hint-icon">💡</span>
+                <span class="hint-text-label">İpucu Kullan</span>
+                <span id="hint-token-badge">3</span>
+            </button>
+        </div>
 
+        <!-- Ana aksiyon butonları -->
         <button class="btn-check" onclick="checkAnswer()">KONTROL ET</button>
-        <button class="btn-giveup" onclick="showAnswer()">CEVABI GÖSTER</button>
-        <button id="btn-finish" onclick="finishQuiz()" class="btn-finish" style="display:none;">✓ Bitir</button>
-        <button class="btn-close" onclick="closeModal()">İPTAL</button>
+
+        <!-- Alt butonlar: önceki / cevabı göster / bitir / iptal -->
+        <div class="btn-row-secondary">
+            <button id="btn-prev-question" style="display:none;" class="btn-secondary btn-prev">◀ Önceki</button>
+            <button class="btn-secondary btn-giveup" onclick="showAnswer()">Cevabı Göster</button>
+            <button id="btn-finish" onclick="finishQuiz()" class="btn-secondary btn-finish" style="display:none;">✓ Bitir</button>
+            <button class="btn-secondary btn-close" onclick="closeModal()">İptal</button>
+        </div>
+
         <p id="feedback"></p>
     </div>
 
