@@ -18,13 +18,80 @@ h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
 
 /* --- Butonlar --- */
 #back-btn { display: none; background-color: #e74c3c; color: white; padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 15px; font-weight: bold; }
-.btn-check, .btn-close, .btn-giveup, .btn-prev, .btn-finish { width: 100%; padding: 10px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-bottom: 5px; color: white; }
-.btn-check  { background: #3498db; }
-.btn-close  { background: #95a5a6; }
-.btn-giveup { background: #f39c12; }
-.btn-prev   { background: #8e44ad; }
-.btn-finish { background: #27ae60; }
-.btn-finish:hover { background: #2ecc71; }
+
+/* Ana kontrol butonu */
+.btn-check { width: 100%; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; margin-bottom: 10px; color: white; background: #3498db; font-size: 1rem; letter-spacing: 0.5px; transition: background 0.2s; }
+.btn-check:hover { background: #2980b9; }
+
+/* İkincil buton satırı */
+.btn-row-secondary { display: flex; gap: 6px; margin-bottom: 10px; }
+.btn-secondary { flex: 1; padding: 8px 4px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.78rem; color: white; transition: opacity 0.2s; }
+.btn-secondary:hover { opacity: 0.85; }
+.btn-prev   { background: #7f8c8d; display: none; }
+.btn-giveup { background: #e67e22; }
+.btn-finish { background: #27ae60; display: none; }
+.btn-close  { background: #bdc3c7; color: #2c3e50; }
+
+/* --- İPUCU BUTONU (özel tasarım) --- */
+#hint-area {
+    margin-bottom: 10px;
+}
+
+#btn-hint {
+    width: 100%;
+    padding: 10px 16px;
+    border: 2px dashed #9b59b6;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #f5eef8 0%, #fdfbff 100%);
+    color: #6c3483;
+    font-weight: 700;
+    font-size: 0.9rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s;
+    position: relative;
+}
+
+#btn-hint:hover:not(:disabled) {
+    background: linear-gradient(135deg, #e8d5f5 0%, #f5eef8 100%);
+    border-color: #7d3c98;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(142, 68, 173, 0.2);
+}
+
+#btn-hint:disabled {
+    border-color: #d5d8dc;
+    background: #f2f3f4;
+    color: #aab7b8;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.hint-icon { font-size: 1.1rem; }
+.hint-text-label { flex: 1; text-align: left; }
+
+#hint-token-badge {
+    background: #8e44ad;
+    color: white;
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.3s;
+}
+
+#btn-hint:disabled #hint-token-badge {
+    background: #bdc3c7;
+}
 
 /* --- LEAFLET HARİTA KUTUSU --- */
 #map {
@@ -39,6 +106,7 @@ h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
 #status-bar { background: white; padding: 10px 20px; border-radius: 50px; display: inline-block; box-shadow: 0 2px 5px rgba(0,0,0,0.1); font-weight: bold; }
 #score-correct { color: #27ae60; margin-left: 5px; }
 #score-wrong { color: #e74c3c; margin-left: 5px; }
+#score-shown { color: #f39c12; margin-left: 5px; }
 .hint-text { font-size: 0.85rem; color: #7f8c8d; margin-top: 5px; }
 
 /* Modal Ayarları */
@@ -49,6 +117,25 @@ h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
     background: white; padding: 25px; padding-top: 45px;
     border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
     z-index: 1000; width: 90%; max-width: 370px; text-align: center;
+    overflow: hidden;
+}
+
+/* Üst ilerleme çubuğu */
+#modal-progress-bar {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 5px;
+    background: #ecf0f1;
+    border-radius: 12px 12px 0 0;
+    overflow: hidden;
+}
+#modal-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #3498db, #27ae60);
+    border-radius: 12px 12px 0 0;
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 input[type="text"] { width: 100%; padding: 12px; margin: 15px 0; border: 2px solid #dfe6e9; border-radius: 8px; font-size: 16px; outline: none; text-align: center; }
 
