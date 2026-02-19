@@ -5,7 +5,15 @@
 let map = null;
 let currentMarkers = [];
 let currentMountain = null;
-let score = { correct: 0, wrong: 0 };
+let score = { correct: 0, wrong: 0, shown: 0 };
+
+// Mevcut soru için kaç kez yanlış girildiğini takip eder
+let wrongAttempts = 0;
+const MAX_WRONG_ATTEMPTS = 3;
+
+// --- İPUCU SİSTEMİ ---
+let hintTokens = 3;        // Session başına 3 ipucu hakkı
+let hintLevel = 0;         // 0=hiç kullanılmadı, 1=ilk harf, 2=harf deseni
 
 // DOM Elementleri
 const menuArea = document.getElementById('menu-area');
@@ -103,6 +111,16 @@ function renderHistorySelection() {
     backBtn.onclick = () => renderMenu(appData.main);
 }
 
+// Gerçek rastgele karıştırma (Fisher-Yates algoritması)
+function shuffleArray(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+
 function startMixedQuiz() {
     const selectedCheckboxes = document.querySelectorAll('input[name="history-topic"]:checked');
     let mixedQuestions = [];
@@ -128,11 +146,16 @@ function startMixedQuiz() {
         }
     });
 
-    currentQuiz = mixedQuestions.sort(() => Math.random() - 0.5);
+    currentQuiz = shuffleArray(mixedQuestions);
     questionIndex = 0;
     quizHistory = [];
     historyViewIndex = -1;
     quizFinished = false;
+    hintTokens = 3;
+
+    // İlerleme çubuğunu sıfırla
+    const fill = document.getElementById('modal-progress-fill');
+    if (fill) fill.style.width = '0%';
 
     const overlay = document.getElementById('shuffle-overlay');
     const iconEl = document.getElementById('dynamic-shuffle-icon');
@@ -310,13 +333,16 @@ function openQuestion(item, markerObject = null) {
     input.value = "";
     input.readOnly = false;
     document.getElementById('feedback').innerText = "";
+    wrongAttempts = 0;
+    hintLevel = 0;
 
     // Tarih sorusu ise butonları ve UI'yi ayarla
     if (item.q) {
         document.querySelector('.btn-check').style.display = 'block';
-        document.querySelector('.btn-giveup').style.display = 'block';
+        document.querySelector('.btn-giveup').style.display = 'inline-block';
         document.getElementById('btn-finish').style.display = 'block';
-        document.querySelector('.btn-close').style.display = 'block';
+        document.querySelector('.btn-close').style.display = 'inline-block';
+        updateHintButton();
         updateHistoryQuizUI(false);
     } else {
         // Coğrafya: tarih özel buton/elementleri gizle
@@ -325,15 +351,33 @@ function openQuestion(item, markerObject = null) {
         const progressEl = document.getElementById('quiz-progress');
         if (progressEl) progressEl.style.display = 'none';
         document.getElementById('btn-finish').style.display = 'none';
+        document.getElementById('hint-area').style.display = 'none';
         document.querySelector('.btn-check').style.display = 'block';
-        document.querySelector('.btn-giveup').style.display = 'block';
-        document.querySelector('.btn-close').style.display = 'block';
+        document.querySelector('.btn-giveup').style.display = 'inline-block';
+        document.querySelector('.btn-close').style.display = 'inline-block';
     }
 
     input.focus();
 }
 
 // --- TARİH QUIZ UI (ilerleme + önceki soru butonu) ---
+
+function updateProgressBar() {
+    const fill = document.getElementById('modal-progress-fill');
+    if (!fill || currentQuiz.length === 0) return;
+    const pct = ((questionIndex) / currentQuiz.length) * 100;
+    fill.style.width = pct + '%';
+
+    // Renk: başlangıç mavi, ortada sarıya, sona doğru yeşile
+    if (pct < 50) {
+        fill.style.background = 'linear-gradient(90deg, #3498db, #2ecc71)';
+    } else if (pct < 85) {
+        fill.style.background = 'linear-gradient(90deg, #f39c12, #27ae60)';
+    } else {
+        fill.style.background = 'linear-gradient(90deg, #27ae60, #2ecc71)';
+    }
+}
+
 function updateHistoryQuizUI(isHistoryView) {
     const prevBtn = document.getElementById('btn-prev-question');
     const progressEl = document.getElementById('quiz-progress');
@@ -366,6 +410,64 @@ function goToPrevQuestion() {
     historyViewIndex = quizHistory.length - 1;
     currentHistoryItem = quizHistory[historyViewIndex];
     showHistoryQuestion(historyViewIndex);
+}
+
+// --- İPUCU SİSTEMİ FONKSİYONLARI ---
+
+// Düğmenin metnini ve durumunu günceller
+function updateHintButton() {
+    const btn = document.getElementById('btn-hint');
+    const badge = document.getElementById('hint-token-badge');
+    const label = btn ? btn.querySelector('.hint-text-label') : null;
+    if (!btn) return;
+
+    if (badge) badge.innerText = hintTokens;
+
+    if (hintTokens <= 0) {
+        if (label) label.innerText = 'İpucu Hakkı Kalmadı';
+        btn.disabled = true;
+    } else if (hintLevel === 0) {
+        if (label) label.innerText = 'İpucu Kullan';
+        btn.disabled = false;
+    } else if (hintLevel === 1) {
+        if (label) label.innerText = 'Daha Fazla İpucu';
+        btn.disabled = false;
+    } else {
+        if (label) label.innerText = 'İpucu Kullanıldı';
+        btn.disabled = true;
+    }
+}
+
+function useHint() {
+    if (hintTokens <= 0 || !currentMountain || !currentMountain.a) return;
+
+    const correctAnswer = currentMountain.a[0];
+    const feedback = document.getElementById('feedback');
+    hintTokens--;
+    hintLevel++;
+
+    let hintText = '';
+
+    if (hintLevel === 1) {
+        // Seviye 1: İlk harf + kaç harfli olduğu
+        const firstLetter = correctAnswer[0].toLocaleUpperCase('tr');
+        const wordCount = correctAnswer.trim().split(/\s+/).length;
+        const letterCount = correctAnswer.replace(/\s/g, '').length;
+        hintText = `💡 <b>İpucu:</b> İlk harf <b style="color:#8e44ad; font-size:1.1rem;">${firstLetter}</b> — ${wordCount} kelime, toplam ${letterCount} harf`;
+    } else if (hintLevel === 2) {
+        // Seviye 2: Her kelimeyi ___ deseni olarak göster (ilk harf açık)
+        const words = correctAnswer.trim().split(/\s+/);
+        const pattern = words.map(word => {
+            const first = word[0].toLocaleUpperCase('tr');
+            const rest = '_ '.repeat(word.length - 1).trim();
+            return `<b style="color:#8e44ad">${first}</b>${rest ? rest : ''}`;
+        }).join('&nbsp;&nbsp;');
+        hintText = `💡 <b>İpucu:</b> ${pattern}`;
+    }
+
+    feedback.style.color = '#8e44ad';
+    feedback.innerHTML = hintText;
+    updateHintButton();
 }
 
 function goToPrevInHistory() {
@@ -429,6 +531,7 @@ function showHistoryQuestion(idx) {
     document.querySelector('.btn-check').style.display = 'none';
     document.querySelector('.btn-giveup').style.display = 'none';
     document.getElementById('btn-finish').style.display = 'none';
+    document.getElementById('hint-area').style.display = 'none';
     document.querySelector('.btn-close').style.display = 'none';
 
     const prevBtn = document.getElementById('btn-prev-question');
@@ -457,26 +560,66 @@ function resumeQuiz() {
     currentHistoryItem = null;
 
     const input = document.getElementById('user-answer');
-    input.readOnly = false;
-    input.value = "";
+    if (input) { input.readOnly = false; input.value = ""; }
 
-    document.querySelector('.btn-check').style.display = 'block';
-    document.querySelector('.btn-giveup').style.display = 'block';
-    document.getElementById('btn-finish').style.display = 'block';
-    document.querySelector('.btn-close').style.display = 'block';
+    const btnCheck = document.querySelector('.btn-check');
+    if (btnCheck) btnCheck.style.display = 'block';
+    const btnGiveup = document.querySelector('.btn-giveup');
+    if (btnGiveup) btnGiveup.style.display = 'inline-block';
+    const btnFinish = document.getElementById('btn-finish');
+    if (btnFinish) btnFinish.style.display = 'block';
+    const hintArea = document.getElementById('hint-area');
+    if (hintArea) hintArea.style.display = 'block';
+    const btnClose = document.querySelector('.btn-close');
+    if (btnClose) btnClose.style.display = 'inline-block';
 
     closeModal();
     nextQuestion();
 }
 
 // --- CEVAP KONTROL ---
+
+// Cevap karşılaştırması için metni normalleştirir:
+// küçük harf, baştaki/sondaki boşlukları siler, çoklu boşlukları tekleştirir
+function normalizeText(text) {
+    return text
+        .toLocaleLowerCase('tr')
+        .trim()
+        .replace(/\s+/g, ' ');
+}
+
+// İki metinden biri diğerini içeriyorsa eşleşme say
+// Ayrıca: kullanıcı en az 3 karakter yazdıysa, cevabın ilk kelimesiyle başlıyorsa da kabul et
+function isAnswerMatch(userText, correctAnswer) {
+    const u = normalizeText(userText);
+    const a = normalizeText(correctAnswer);
+
+    if (u.length < 2) return false; // Çok kısa girişleri reddet
+    if (u === a) return true;
+    if (a.includes(u)) return true;  // Kullanıcı cevabın bir parçasını yazdı
+    if (u.includes(a)) return true;  // Kullanıcı cevabı kapsayan bir şey yazdı
+
+    // Cevap birden fazla kelimeden oluşuyorsa, kullanıcı ilk anlamlı kelimeyi yazdıysa kabul et
+    const aWords = a.split(' ');
+    const uWords = u.split(' ');
+    if (aWords.length > 1 && uWords.length >= 1) {
+        // Kullanıcının yazdığı her kelime cevabın kelimelerinde geçiyorsa kabul et
+        const allWordsMatch = uWords.every(uw => aWords.some(aw => aw.includes(uw) || uw.includes(aw)));
+        if (allWordsMatch) return true;
+    }
+
+    return false;
+}
+
 function checkAnswer() {
-    const userText = document.getElementById('user-answer').value.toLocaleLowerCase('tr').trim();
+    const userText = document.getElementById('user-answer').value;
     const feedback = document.getElementById('feedback');
 
     const correctAnswers = currentMountain.a || currentMountain.names;
 
-    if (correctAnswers.includes(userText)) {
+    const isMatch = correctAnswers.some(ans => isAnswerMatch(userText, ans));
+
+    if (isMatch) {
         feedback.style.color = "#27ae60";
         feedback.innerHTML = "<b>DOĞRU!</b>";
 
@@ -484,9 +627,9 @@ function checkAnswer() {
         if (pinElement) pinElement.classList.add('correct');
 
         score.correct++;
+        updateScore();
 
         if (currentMountain.q) {
-            // Geçmişte bu soruyu güncelle ya da ekle
             const existingIdx = quizHistory.findIndex(h => h.item.id === currentMountain.id);
             if (existingIdx !== -1) {
                 quizHistory[existingIdx] = { item: currentMountain, userAnswer: userText, status: 'correct' };
@@ -498,25 +641,52 @@ function checkAnswer() {
             setTimeout(closeModal, 850);
         }
     } else {
-        feedback.style.color = "#e74c3c";
-        feedback.innerHTML = "<b>YANLIŞ!</b>";
+        wrongAttempts++;
         document.getElementById('question-modal').classList.add('apply-shake');
         setTimeout(() => document.getElementById('question-modal').classList.remove('apply-shake'), 500);
-        score.wrong++;
 
-        if (currentMountain.q) {
+        if (wrongAttempts >= MAX_WRONG_ATTEMPTS && currentMountain.q) {
+            // 3. yanlışta otomatik cevabı göster ve geç
+            const correctAnswer = currentMountain.a[0];
+            const input = document.getElementById('user-answer');
+            input.value = correctAnswer.toLocaleUpperCase('tr');
+            input.readOnly = true;
+
+            feedback.style.color = "#e74c3c";
+            feedback.innerHTML = `<b>Bilemedin!</b> Doğru cevap: <b style="color:#e74c3c">${correctAnswer.toLocaleUpperCase('tr')}</b>`;
+            if (currentMountain.desc) {
+                feedback.innerHTML += `<br><span style="font-size:0.9rem; color:#555;">${currentMountain.desc}</span>`;
+            }
+
+            // Sadece 1 yanlış say (kaç deneme yapılmış olursa olsun)
+            score.wrong++;
+            updateScore();
+
             const existingIdx = quizHistory.findIndex(h => h.item.id === currentMountain.id);
             if (existingIdx === -1) {
                 quizHistory.push({ item: currentMountain, userAnswer: userText, status: 'wrong' });
-            } else if (quizHistory[existingIdx].status !== 'correct') {
+            } else {
                 quizHistory[existingIdx].userAnswer = userText;
                 quizHistory[existingIdx].status = 'wrong';
             }
+
+            setTimeout(() => { closeModal(); nextQuestion(); }, 2000);
+
+        } else {
+            // Normal yanlış — sayaçlara dokunma, sadece kalan hak göster
+            const remaining = MAX_WRONG_ATTEMPTS - wrongAttempts;
+            feedback.style.color = "#e74c3c";
+            if (currentMountain.q) {
+                feedback.innerHTML = `<b>YANLIŞ!</b> <span style="font-size:0.85rem; color:#c0392b;">(${remaining} hakkın kaldı)</span>`;
+            } else {
+                // Coğrafya: her yanlışı say (soru tekrar edilmiyor)
+                score.wrong++;
+                updateScore();
+                feedback.innerHTML = `<b>YANLIŞ!</b>`;
+            }
         }
     }
-    updateScore();
 }
-
 function showAnswer() {
     const input = document.getElementById('user-answer');
     const feedback = document.getElementById('feedback');
@@ -524,13 +694,14 @@ function showAnswer() {
     const correctAnswer = (currentMountain.a ? currentMountain.a[0] : currentMountain.names[0]).toUpperCase();
 
     input.value = correctAnswer;
+    input.readOnly = true;
     feedback.innerHTML = "Cevap gösterildi.";
     feedback.style.color = "#f39c12";
 
     const pinElement = document.getElementById(`marker-${currentMountain.id}`);
     if (pinElement) pinElement.classList.add('passive');
 
-    score.wrong++;
+    score.shown++;
 
     if (currentMountain.desc) {
         feedback.innerHTML += `<br><span style="font-size:0.9rem; color:#555;">${currentMountain.desc}</span>`;
@@ -554,12 +725,18 @@ function closeModal() {
     document.getElementById('question-modal').style.display = 'none';
 
     const input = document.getElementById('user-answer');
-    input.readOnly = false;
+    if (input) input.readOnly = false;
 
-    document.querySelector('.btn-check').style.display = 'block';
-    document.querySelector('.btn-giveup').style.display = 'block';
-    document.getElementById('btn-finish').style.display = 'block';
-    document.querySelector('.btn-close').style.display = 'block';
+    const btnCheck = document.querySelector('.btn-check');
+    if (btnCheck) btnCheck.style.display = 'block';
+    const btnGiveup = document.querySelector('.btn-giveup');
+    if (btnGiveup) btnGiveup.style.display = 'inline-block';
+    const btnFinish = document.getElementById('btn-finish');
+    if (btnFinish) btnFinish.style.display = 'block';
+    const hintArea = document.getElementById('hint-area');
+    if (hintArea) hintArea.style.display = 'block';
+    const btnClose = document.querySelector('.btn-close');
+    if (btnClose) btnClose.style.display = 'inline-block';
 
     if (historyViewIndex !== -1) {
         historyViewIndex = -1;
@@ -579,7 +756,8 @@ function finishQuiz() {
 
     const reviewList = [...wrongItems, ...shownItems];
 
-    closeModal();
+    // Modal zaten açık — direkt sonuç ekranına geç, closeModal çağırmıyoruz
+    // çünkü showResultScreen zaten innerHTML'i yeniden yazar
     showResultScreen(correctCount, wrongCount, shownCount, reviewList);
 }
 
@@ -696,11 +874,20 @@ function closeResultScreen() {
         <div id="quiz-progress" style="display:none;"></div>
         <h3 id="q-title">Soru</h3>
         <input type="text" id="user-answer" placeholder="Cevabı yazın..." autocomplete="off">
-        <button id="btn-prev-question" style="display:none;" class="btn-prev">◀ Önceki Soru</button>
+        <div id="hint-area" style="display:none;">
+            <button id="btn-hint" onclick="useHint()">
+                <span class="hint-icon">💡</span>
+                <span class="hint-text-label">İpucu Kullan</span>
+                <span id="hint-token-badge">3</span>
+            </button>
+        </div>
         <button class="btn-check" onclick="checkAnswer()">KONTROL ET</button>
-        <button class="btn-giveup" onclick="showAnswer()">CEVABI GÖSTER</button>
-        <button id="btn-finish" onclick="finishQuiz()" class="btn-finish" style="display:none;">✓ Bitir</button>
-        <button class="btn-close" onclick="closeModal()">İPTAL</button>
+        <div class="btn-row-secondary">
+            <button id="btn-prev-question" style="display:none;" class="btn-secondary btn-prev">◀ Önceki</button>
+            <button class="btn-secondary btn-giveup" onclick="showAnswer()">Cevabı Göster</button>
+            <button id="btn-finish" onclick="finishQuiz()" class="btn-secondary btn-finish" style="display:none;">✓ Bitir</button>
+            <button class="btn-secondary btn-close" onclick="closeModal()">İptal</button>
+        </div>
         <p id="feedback"></p>
     `;
     // Enter tuşu dinleyicisini yeniden bağla
@@ -717,11 +904,14 @@ function closeResultScreen() {
 function updateScore() {
     document.getElementById('score-correct').innerText = score.correct;
     document.getElementById('score-wrong').innerText = score.wrong;
+    const shownEl = document.getElementById('score-shown');
+    if (shownEl) shownEl.innerText = score.shown;
 }
 
 function resetScore() {
     score.correct = 0;
     score.wrong = 0;
+    score.shown = 0;
     updateScore();
 }
 
@@ -732,6 +922,8 @@ function resetHistoryQuiz() {
     historyViewIndex = -1;
     currentHistoryItem = null;
     quizFinished = false;
+    hintTokens = 3;
+    hintLevel = 0;
     resetScore();
 }
 
@@ -740,7 +932,7 @@ document.getElementById("user-answer").addEventListener("keypress", function (e)
 });
 
 function startQuiz(quizId) {
-    currentQuiz = [...appData.quizData[quizId]].sort(() => Math.random() - 0.5);
+    currentQuiz = shuffleArray(appData.quizData[quizId]);
     questionIndex = 0;
     quizHistory = [];
     historyViewIndex = -1;
@@ -760,10 +952,11 @@ function nextQuestion() {
         questionIndex++;
         openQuestion(currentItem);
         if (currentItem.q) {
+            updateProgressBar();
             updateHistoryQuizUI(false);
         }
     } else {
-        // Quiz bitti — otomatik sonuç göster
+        // Quiz bitti — modal zaten açık olabilir, direkt sonuç göster
         quizFinished = true;
         const wrongItems = quizHistory.filter(h => h.status === 'wrong');
         const shownItems = quizHistory.filter(h => h.status === 'shown');
